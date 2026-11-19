@@ -23,7 +23,7 @@ const Tracker = track.VideoTracker;
 
 pub const tracking_type: MatchingAlgorithm = .KCF;
 const debug_mode = false;
-const filename: []const u8 = "output";
+const filename: []const u8 = "videoplayback";
 const file_extension: []const u8 = "mp4";
 const relative_video_path: [:0]const u8 = std.fmt.comptimePrint("tests/{s}.{s}", .{filename, file_extension});
 const video_format: recording.VideoFormats = .rgb;
