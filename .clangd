@@ -1,0 +1,9 @@
+If:
+  PathMatch: src/Tracking/.*
+
+CompileFlags:
+  Compiler: clang++
+  Add:
+    - -std=c++17
+    - -I/Users/gage/Desktop/ElectricalEngineering/GraduateSchool/VideoProcessing/Project/src/Tracking
+    - -I/Users/gage/Desktop/ElectricalEngineering/GraduateSchool/VideoProcessing/Project/dependencies/OpenCV/aarch64-macos-none/include/opencv5

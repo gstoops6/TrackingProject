@@ -1,0 +1,27 @@
+.{
+    .name = .CAMshiftProject,
+    .fingerprint = 0xc472af3afff1d081,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .ffmpeg = .{ .path = "dependencies/FFMpeg" },
+
+        .openblas = .{
+            .url = "git+https://github.com/OpenMathLib/OpenBLAS.git#8d26a5a1d92c6005b04122b315015b05437b2e1f",
+            .hash = "N-V-__8AAL-geQrx8iYwOqdAt4J57i5xM7RVYoymPO-go5gA",
+        },
+        .raylib_zig = .{
+            .url = "git+https://github.com/raylib-zig/raylib-zig#bd161c82d4cc42d9ea7986d0c6a86daaae79e430",
+            .hash = "raylib_zig-6.0.0-KE8REMRkBQDX9c7yaFVIEhy7tXWq7fUGyiPd-RdOjrWI",
+        },
+        .opencv = .{
+            .url = "git+https://github.com/opencv/opencv#370175b3bd5b9a3232e583a1b21d5b4aaba822fc",
+            .hash = "N-V-__8AAOP6ignTv6IYSFZtkBTCoZnFc1363yHelqMKE5N8",
+        },
+        .opencv_contrib = .{
+            .url = "git+https://github.com/opencv/opencv_contrib.git#b67a855188a3d683813731010f6d39ac614733a4",
+            .hash = "N-V-__8AAOF2BQkiBKeNG8d1Pnrf4-UiPpF6sC-IUs1EEMDb",
+        },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "build/openblas.zig", "build/build_openblas.cmake", "build/raylib.zig", "build/opencv.zig", "build/build_opencv.cmake", "build/clean_dependency_builds.cmake", "dependencies", "src" },
+}
