@@ -9,5 +9,5 @@
             .hash = "N-V-__8AAGbtQAVc6iXuEUmvgXPS-h-SD6K9NR4OQW-TVXmO",
         },
     },
-    .paths = .{ "build.zig", "build.zig.zon", "build", "src" },
+    .paths = .{ "build.zig", "build.zig.zon", "build/ffmpeg.zig", "build/build_ffmpeg.cmake", "src" },
 }
