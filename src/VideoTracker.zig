@@ -532,8 +532,6 @@ pub fn run_update(update_primitive: *AkazeAsyncUpdate, akaze_tracker: *AkazeTrac
 }
 
 
-
-
 /// Initializes CA/CV filters in caller-provided storage for transfer to IMM.init.
 /// The initial estimate and covariance are borrowed; model matrices belong to the filters.
 fn create_kalman_filters(
