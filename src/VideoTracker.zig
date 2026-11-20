@@ -149,6 +149,7 @@ pub const VideoTracker = struct{
     }
 
     pub fn deinit(self: *VideoTracker) void{
+        self.cancel_async() catch {};
         if(self.ect.cs)|cs| camshift_destroy(cs);
         if(self.ect.ak)|ak| akaze_destroy(ak);
         if(self.ect.kcf) |kcf| kcf_destroy(kcf);
@@ -287,19 +288,24 @@ pub const VideoTracker = struct{
         if(self.kcf_rolling_mean_samples == self.kcf_rollover){
             kcf_confidence_threshold = self.kcf_rolling_mean / (@as(f32, @floatFromInt(self.kcf_rollover)) + 1);
             self.kcf_rolling_mean = 0.0;
-            std.debug.print("Score: {d}\n", .{kcf_confidence_threshold});
+            //std.debug.print("Score: {d}\n", .{kcf_confidence_threshold});
         }
 
 
         self.kcf_rolling_mean += self.kcf_score;
         self.kcf_rolling_mean_samples +%= 1;
-        self.akaze_update.join_after_complete(self.smp);
+        if(self.future != null){
+            self.akaze_update.join_after_complete(self.smp, &self.future.?);
+        }else{
+            self.akaze_update.join_after_complete(self.smp, null);
+        }
+
 
         if(!tmp_bb.valid){
-            if(self.consecutive_primary_failures == 10){
+            if(self.consecutive_primary_failures >= 10){
                 try self.cancel_async();
                 try self.compute_akaze(&tmp_bb);
-                std.debug.print("Akaze Update Cancelled\n", .{});
+
                 if(tmp_bb.valid){
                     std.debug.print("Akaze Recovered\n", .{});
                     try self.reinit_kcf_tracker();
@@ -376,10 +382,11 @@ pub const VideoTracker = struct{
                         return err;
                     }
                 };
+                std.debug.print("Akaze Update Cancelled\n", .{});
+                self.future = null;
             }
+            self.akaze_update.join_after_complete(self.smp, null);
         }
-        self.akaze_update.join_after_complete(self.smp);
-        if(self.future != null) self.future = null;
     }
 
 
@@ -436,17 +443,21 @@ pub const AkazeAsyncUpdate = struct{
         return self.ready_flag.load(.acquire);
     }
 
-    pub fn join_after_complete(self: *AkazeAsyncUpdate, smp: std.mem.Allocator) void{
+    pub fn join_after_complete(self: *AkazeAsyncUpdate, smp: std.mem.Allocator, future: ?*std.Io.Future(anyerror!void)) void{
         if(self.check_completion() and !self.check_ready()){
             if(self.frame_copy != null){
                 self.frame_copy.?.deinit(smp);
                 self.frame_copy = null;
             }
+
+            if(future)|f|{
+                f.await(self.io) catch {};
+            }
+
             self.completion_flag.store(false, .release);
             self.ready_flag.store(true, .release);
             std.debug.print("Update Completed\n", .{});
         }
-
     }
 
     // Pass frame to this sync primitive to manage the lifetime of the clone during the update.

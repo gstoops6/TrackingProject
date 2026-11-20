@@ -23,7 +23,7 @@ const Tracker = track.VideoTracker;
 
 pub const tracking_type: MatchingAlgorithm = .KCF;
 const debug_mode = false;
-const filename: []const u8 = "videoplayback";
+const filename: []const u8 = "motorcycle";
 const file_extension: []const u8 = "mp4";
 const relative_video_path: [:0]const u8 = std.fmt.comptimePrint("tests/{s}.{s}", .{filename, file_extension});
 const video_format: recording.VideoFormats = .rgb;
@@ -114,7 +114,7 @@ pub fn main(init: std.process.Init) !void {
     const fps_num: f64 = @floatFromInt(fps_rational.num);
     const fps_den: f64 = @floatFromInt(fps_rational.den);
     const fps = fps_num / fps_den;
-
+    std.debug.print("Video playback at {d} FPS\n", .{@as(usize, @intFromFloat(@round(fps)))});
 
     rl.setConfigFlags(.{ .window_resizable = true });
     rl.initWindow(window_width, window_height, "Camshift Tracker");
