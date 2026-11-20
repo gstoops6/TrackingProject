@@ -2,6 +2,7 @@ const gui = @import("../GUI.zig");
 const rg = gui.rg;
 const rl = gui.rl;
 const root = @import("root");
+const std = @import("std");
 
 const AppState = gui.AppState;
 const BoundingBox = @import("../VideoTracker.zig").BoundingBox;
@@ -113,6 +114,8 @@ fn fit_texture_rect(bounds: rl.Rectangle, width: c_int, height: c_int) rl.Rectan
 
 fn draw_bounding_box(bounding_box: BoundingBox, texture: rl.Texture, image_frame: rl.Rectangle) void {
     if (!bounding_box.valid and bounding_box.matcher != opencvIMM) return;
+
+    //if(bounding_box.matcher == opencvIMM) std.debug.print("Displaying IMM Bounding Box\n", .{});
 
     const frame_width: f32 = @floatFromInt(texture.width);
     const frame_height: f32 = @floatFromInt(texture.height);
