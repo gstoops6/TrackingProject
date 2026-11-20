@@ -344,7 +344,6 @@ fn test_predict(allocator: std.mem.Allocator) !void {
         try std.testing.expectEqual(@as(Float, 3), filters[1].x_posterior.data[0]);
         try std.testing.expect(imm.prediction_pending);
 
-        // No measurement: propagate from the preceding priors and advance mu.
         try imm.predict();
         try std.testing.expectApproxEqRel(@as(Float, 0.62), imm.mu.data[0], 1e-12);
         try std.testing.expectApproxEqRel(@as(Float, 0.634), imm.cbar.data[0], 1e-12);
