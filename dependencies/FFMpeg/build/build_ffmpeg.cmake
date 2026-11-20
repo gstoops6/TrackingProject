@@ -40,14 +40,18 @@ if(NOT EXISTS "${source_dir}/configure")
 endif()
 
 if(CMAKE_HOST_WIN32)
-    # Install make and binutils in MSYS2. Use the MSYS shell and tools even
-    # when Zig is invoked from PowerShell or the Visual Studio command prompt.
+    # Install make, binutils and (for x86 assembly) nasm in MSYS2. Use the MSYS
+    # shell and tools even from PowerShell or the Visual Studio command prompt.
     file(TO_CMAKE_PATH "${msys2_root}" msys2_root)
     set(msys2_bin "${msys2_root}/usr/bin")
-    foreach(tool bash make nm)
+    set(required_tools bash make nm)
+    if(arch STREQUAL "x86" OR arch STREQUAL "x86_64")
+        list(APPEND required_tools nasm)
+    endif()
+    foreach(tool IN LISTS required_tools)
         if(NOT EXISTS "${msys2_bin}/${tool}.exe")
             message(FATAL_ERROR
-                "FFmpeg requires MSYS2 with make and binutils (missing ${msys2_bin}/${tool}.exe). Set MSYS2_ROOT for a custom installation.")
+                "FFmpeg requires MSYS2 with make, binutils and nasm for x86 assembly (missing ${msys2_bin}/${tool}.exe). Set MSYS2_ROOT for a custom installation.")
         endif()
     endforeach()
     set(shell_command "${msys2_bin}/bash.exe" --noprofile --norc -c
@@ -77,7 +81,7 @@ endfunction()
 set(configure_args
     --cc=./zig_cc --host-cc=./zig_cc --ar=./zig_ar --ranlib=./zig_ranlib
     "--prefix=${install_dir}" "--target-os=${target_os}" "--arch=${arch}"
-    --enable-optimizations --disable-debug --disable-autodetect --disable-iconv --disable-stripping
+    --enable-optimizations --disable-debug  --disable-iconv --disable-stripping --disable-autodetect
     --disable-programs --disable-doc --disable-avdevice --disable-avfilter)
 if(arch STREQUAL "x86" OR arch STREQUAL "x86_64")
     list(APPEND configure_args --enable-x86asm)
@@ -111,6 +115,11 @@ if(NOT configured_key STREQUAL build_key)
         # Older glibc symbol tables still expose sysctl without its removed header.
         string(REPLACE "check_func  sysctl" "check_func_headers sys/sysctl.h sysctl"
             configure_script "${configure_script}")
+    elseif(target_os STREQUAL "mingw32")
+        # Zig rejects FFmpeg's old GNU ld relocation workaround.
+        string(REGEX REPLACE
+            "disabled debug && add_ldexeflags -Wl,--pic-executable,-e,_?mainCRTStartup"
+            ":" configure_script "${configure_script}")
     endif()
     # Let the compiler supply atomics when possible before adding libatomic.
     string(REPLACE [=[for LATOMIC in "-latomic" ""; do]=] [=[for LATOMIC in "" "-latomic"; do]=]
