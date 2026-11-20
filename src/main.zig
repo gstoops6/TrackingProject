@@ -23,7 +23,7 @@ const Tracker = track.VideoTracker;
 
 pub const tracking_type: MatchingAlgorithm = .KCF;
 const debug_mode = false;
-const filename: []const u8 = "motorcycle";
+const filename: []const u8 = "HighwayCar";
 const file_extension: []const u8 = "mp4";
 const relative_video_path: [:0]const u8 = std.fmt.comptimePrint("tests/{s}.{s}", .{filename, file_extension});
 const video_format: recording.VideoFormats = .rgb;
@@ -117,7 +117,7 @@ pub fn main(init: std.process.Init) !void {
     std.debug.print("Video playback at {d} FPS\n", .{@as(usize, @intFromFloat(@round(fps)))});
 
     rl.setConfigFlags(.{ .window_resizable = true });
-    rl.initWindow(window_width, window_height, "Camshift Tracker");
+    rl.initWindow(window_width, window_height, "Object Tracker");
     rl.setWindowMinSize(1280, 720);
     rl.setTargetFPS(@intFromFloat(fps));
     defer rl.closeWindow();
@@ -131,8 +131,6 @@ pub fn main(init: std.process.Init) !void {
     var file_buffer: [512]u8 = .{0} ** 512;
     var writer = log_file.writerStreaming(io, &file_buffer);
     var string: [512]u8 = undefined;
-
-
 
 
     const background_color = rg.getStyle(.default, .{ .default = .background_color });
@@ -156,8 +154,6 @@ pub fn main(init: std.process.Init) !void {
     var bb: ?BoundingBox = null;
     var tracker: ?Tracker = null;
     defer if (tracker) |*active_tracker| active_tracker.deinit();
-
-
 
     var frame_num: usize = 0;
 

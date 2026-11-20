@@ -19,8 +19,9 @@ const expansion_default: f32 = 1.7;
 const expansion_min: f32 = 1.3;
 const expansion_max: f32 = 2.5;
 const kcf_confidence_min: f32 = 0.7;
-var kcf_confidence_threshold: f32 = 0.97;
-const akaze_update_interval: usize = 10;
+const akaze_recompute_interval: usize = 10;
+const kcf_confidence_threshold: f32 = 0.97;
+//const akaze_update_interval: usize = 10;
 
 // Types
 pub const BoundingBox = opencv.BoundingBox;
@@ -68,9 +69,8 @@ pub const VideoTracker = struct{
     consecutive_primary_failures: usize = 0,
     future: ?std.Io.Future(anyerror!void) = null,
     kcf_score: f32 = 0,
-    kcf_rolling_mean: f32 = kcf_confidence_min,
-    kcf_rolling_mean_samples: u4 = 0,
-    kcf_rollover: usize = std.math.maxInt(u4),
+    frames_since_last_update: usize = 0,
+    kcf_lost: bool = false,
     akaze_update: AkazeAsyncUpdate,
     initial_akaze_matches: f32 = 0,
     initial_estimate: Matrix,
@@ -84,6 +84,8 @@ pub const VideoTracker = struct{
         const region = try smp.alloc(u8, height * color_stride);
         errdefer smp.free(region);
 
+
+        //akaze_recompute_interval = @as(usize, @intFromFloat(frame_rate / 3));
 
         const kf_buffer = try smp.alloc(KalmanFilter, config.num_filters);
         errdefer smp.free(kf_buffer);
@@ -137,7 +139,7 @@ pub const VideoTracker = struct{
         var desc = to_descriptor(&t.color);
 
         if(root.tracking_type == .KCF){
-            try t.create_kcf_tracker(&desc);
+            try t.create_kcf_tracker(&desc, &t.bounding_box);
         }else if(root.tracking_type == .Camshift){
             try t.create_camshift_tracker(&desc);
         } else {
@@ -184,18 +186,18 @@ pub const VideoTracker = struct{
         ) orelse return error.CamshiftTrackerInitializationFailed;
     }
 
-    pub fn create_kcf_tracker(self: *VideoTracker, desc: *FrameDescriptor) !void{
+    pub fn create_kcf_tracker(self: *VideoTracker, desc: *FrameDescriptor, bb: *BoundingBox) !void{
         self.ect.kcf = kcf_init(
             desc,
-            &self.bounding_box
+            bb
         ) orelse return error.KCFTrackerInitializationFailure;
     }
 
-    pub fn reinit_kcf_tracker(self: *VideoTracker) !void{
+    pub fn reinit_kcf_tracker(self: *VideoTracker, bb: *BoundingBox) !void{
         if(self.ect.kcf)|kcf| kcf_destroy(kcf);
 
         var color = to_descriptor(&self.color);
-        try self.create_kcf_tracker(&color);
+        try self.create_kcf_tracker(&color, bb);
     }
 
     pub fn compute(self: *VideoTracker) !void{
@@ -279,67 +281,76 @@ pub const VideoTracker = struct{
         try self.imm.predict();
 
         var color_desc = to_descriptor(&self.color);
-        var tmp_bb: BoundingBox = kcf_compute(
+        var tmp_bb =  if(!self.kcf_lost) kcf_compute(
             self.ect.kcf orelse return error.NullTracker,
             &color_desc,
             &self.kcf_score
-        );
-
-        if(self.kcf_rolling_mean_samples == self.kcf_rollover){
-            kcf_confidence_threshold = self.kcf_rolling_mean / (@as(f32, @floatFromInt(self.kcf_rollover)) + 1);
-            self.kcf_rolling_mean = 0.0;
-            //std.debug.print("Score: {d}\n", .{kcf_confidence_threshold});
-        }
+        ) else self.bounding_box;
 
 
-        self.kcf_rolling_mean += self.kcf_score;
-        self.kcf_rolling_mean_samples +%= 1;
         if(self.future != null){
             self.akaze_update.join_after_complete(self.smp, &self.future.?);
         }else{
             self.akaze_update.join_after_complete(self.smp, null);
         }
 
+        tmp_bb.valid = if(self.kcf_score < kcf_confidence_min) false else tmp_bb.valid;
+        self.frames_since_last_update += 1;
 
-        if(!tmp_bb.valid){
-            if(self.consecutive_primary_failures >= 10){
-                try self.cancel_async();
-                try self.compute_akaze(&tmp_bb);
+        if(!tmp_bb.valid and self.consecutive_primary_failures >= 10 and @mod(self.consecutive_primary_failures, akaze_recompute_interval) == 0){
+            self.consecutive_primary_failures += 1;
+            //self.expansion_region += expansion_max;
+            if(!self.kcf_lost) std.debug.print("KCF Tracker Lost\n", .{});
+            self.kcf_lost = true;
+            tmp_bb = self.bounding_box;
+            try self.cancel_async();
+            try self.compute_akaze(&tmp_bb, true);
 
-                if(tmp_bb.valid){
-                    std.debug.print("Akaze Recovered\n", .{});
-                    try self.reinit_kcf_tracker();
-                }
-            }else{
-                self.consecutive_primary_failures += 1;
-                var imm_update = try self.imm.get_prior_estimate();
-                defer imm_update.covariance.destroy();
-                defer imm_update.state.destroy();
-                imm_update_bounding_box(&tmp_bb, &self.bounding_box,&imm_update);
-                tmp_bb.matcher = opencv.IMM;
+            if(tmp_bb.valid){
+                self.frames_since_last_update = 0;
+                self.consecutive_primary_failures = 0;
+                self.kcf_lost = false;
+                std.debug.print("Akaze Recovered\n", .{});
+                try self.reinit_kcf_tracker(&tmp_bb);
             }
-        } else if(tmp_bb.valid and self.kcf_score > kcf_confidence_threshold and self.kcf_score > kcf_confidence_min and self.akaze_update.check_ready()){
-                if(self.ect.ak)|ak|{
-                    self.akaze_update.bounding_box = tmp_bb;
-                    try self.akaze_update.absorb_clone(self.smp, &self.color);
-                    self.akaze_update.ready_flag.store(false, .release);
-                    self.future = try self.akaze_update.io.concurrent(run_update, .{&self.akaze_update, ak, &self.region});
-                } else return error.NullTracker;
+        } else if(
+                tmp_bb.valid and
+                self.kcf_score > kcf_confidence_threshold and
+                self.kcf_score > kcf_confidence_min and
+                self.frames_since_last_update > akaze_recompute_interval and
+                self.akaze_update.check_ready()
+        ){
+            if(self.ect.ak)|ak|{
+                self.akaze_update.bounding_box = tmp_bb;
+                try self.akaze_update.absorb_clone(self.smp, &self.color);
+                self.akaze_update.ready_flag.store(false, .release);
+                self.future = try self.akaze_update.io.concurrent(run_update, .{&self.akaze_update, ak, &self.region});
+            } else return error.NullTracker;
+            self.frames_since_last_update = 0;
+            self.consecutive_primary_failures = 0;
         }
 
-        if(tmp_bb.valid) try self.valid_imm_update(&tmp_bb);
+        if(!tmp_bb.valid) {
+            self.consecutive_primary_failures += 1;
+            var imm_update = try self.imm.get_prior_estimate();
+            defer imm_update.covariance.destroy();
+            defer imm_update.state.destroy();
+            imm_update_bounding_box(&tmp_bb, &self.bounding_box,&imm_update);
+            tmp_bb.matcher = opencv.IMM;
+        }else {
+            try self.valid_imm_update(&tmp_bb);
+        }
         self.bounding_box = tmp_bb;
     }
 
-
-
-    fn compute_akaze(self: *VideoTracker, bb: *BoundingBox) !void{
-        const crop_origin: ?frame_op.CropOrigin = copy_region(
+    fn compute_akaze(self: *VideoTracker, bb: *BoundingBox, use_crop: bool) !void{
+        const crop_origin: ?frame_op.CropOrigin = if(use_crop) copy_region(
             &self.color,
             &self.region,
             bb,
             self.expansion_region
-        ) catch null;
+        ) catch null
+        else null;
 
 
         var desc = VideoTracker.to_descriptor(if(crop_origin != null) &self.region else &self.color);
@@ -347,25 +358,31 @@ pub const VideoTracker = struct{
             const offset_x: f32 = @floatFromInt(origin.x);
             const offset_y: f32 = @floatFromInt(origin.y);
             for([_]*bbPoint{
-                &self.bounding_box.ul,
-                &self.bounding_box.ur,
-                &self.bounding_box.lr,
-                &self.bounding_box.ll,
-                &self.bounding_box.centroid
+                &bb.ul,
+                &bb.ur,
+                &bb.lr,
+                &bb.ll,
+                &bb.centroid
             }) |point| {
                 point.x -= offset_x;
                 point.y -= offset_y;
             }
         }
 
-        bb.* = akaze_compute(
+        var tmp_bb = akaze_compute(
             self.ect.ak orelse return error.NullTracker,
             &desc
         );
 
-        if(crop_origin) |origin| translate(bb, origin);
+        if(!tmp_bb.valid){
+            bb.crit = tmp_bb.crit;
+            bb.rejection_value = tmp_bb.rejection_value;
+            bb.valid = false;
+        }else{
+            if(crop_origin) |origin| translate(&tmp_bb, origin);
+            bb.* = tmp_bb;
+        }
     }
-
 
     fn valid_imm_update(self: *VideoTracker, bb: *BoundingBox) !void{
         matrix_from_bounding_box(bb, &self.bounding_box_matrix);
@@ -382,7 +399,7 @@ pub const VideoTracker = struct{
                         return err;
                     }
                 };
-                std.debug.print("Akaze Update Cancelled\n", .{});
+                //std.debug.print("Akaze Update Cancelled\n", .{});
                 self.future = null;
             }
             self.akaze_update.join_after_complete(self.smp, null);
@@ -456,7 +473,7 @@ pub const AkazeAsyncUpdate = struct{
 
             self.completion_flag.store(false, .release);
             self.ready_flag.store(true, .release);
-            std.debug.print("Update Completed\n", .{});
+            //std.debug.print("Update Completed\n", .{});
         }
     }
 
@@ -581,7 +598,6 @@ fn create_kalman_filters(
         );
         initialized_count += 1;
     }
-    //return filter_buffer;
 }
 
 
@@ -597,50 +613,3 @@ fn build_imm(smp: std.mem.Allocator, filter_buffer: []KalmanFilter) !IMM{
 
     return try .init(smp, filter_buffer, &mu, &transition_matrix, config.state_transition_cols);
 }
-
-
-
-//var crop_origin: ?frame_op.CropOrigin = null;
-//        if(!tmp_bb.valid){
-//            self.consecutive_primary_failures += 1;
-//            var search_box = self.bounding_box;
-//            search_box.valid = true;
-//
-//             crop_origin = copy_region(
-//                &self.color,
-//                &self.region,
-//                &search_box,
-//                self.expansion_region
-//            ) catch null;
-//
-//
-//            var desc = to_descriptor(if(crop_origin != null) &self.region else &self.color);
-//            if(crop_origin) |origin| {
-//                const offset_x: f32 = @floatFromInt(origin.x);
-//                const offset_y: f32 = @floatFromInt(origin.y);
-//                for([_]*bbPoint{&search_box.ul, &search_box.ur, &search_box.lr, &search_box.ll, &search_box.centroid}) |point| {
-//                    point.x -= offset_x;
-//                    point.y -= offset_y;
-//                }
-//            }
-//
-//
-//            if(tmp_bb.crit != opencv.Accepted){
-//                self.expansion_region = @min(expansion_max, self.expansion_region + expansion_step);
-//            }
-//
-//            const akaze_bb = akaze_compute(
-//                self.ect.ak orelse return error.NullTracker,
-//                &desc
-//            );
-//
-//            const primary_crit = tmp_bb.crit;
-//            tmp_bb = akaze_bb;
-//
-//            if(akaze_bb.valid){
-//                tmp_bb.crit = primary_crit;
-//            }
-//        } else {
-//            self.expansion_region = expansion_default;
-//            self.consecutive_primary_failures = 0;
-//        }
