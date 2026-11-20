@@ -275,7 +275,7 @@ inline fn covariance_predict(self: *KalmanFilter, prior_cov: *Matrix(Float), sta
 
 /// Calculates the Joseph form of the covariance update.
 /// This for of calculation is more robust and less prone to numerical errors, like floating-point, than
-///  the standard form at the cost of more calculation time
+///  the standard form at the cost of higher computation
 /// I - identity matrix
 /// K - Kalman gain
 /// H - observation matrix
@@ -310,14 +310,13 @@ inline fn state_update(self: *KalmanFilter, posterior_state: *Matrix(Float), pri
     _ = try prior_state.add(&work.k_z_hx, posterior_state);
 }
 
+///P @ H.T @ np.linalg.pinv(H @ P @ H.T + R))
 /// Updates the Kalman gain during the update step of the Kalman Filter
 /// P - prior covariance
 /// H - observation matrix
 /// R - measurement noise
 /// K - Kalman gain
 inline fn gain_update(self: *KalmanFilter, gain: *Matrix(Float), prior_cov: *Matrix(Float), observation: *Matrix(Float), measurement_noise: *Matrix(Float)) !void{
-    //P @ H.T @ np.linalg.pinv(H @ P @ H.T + R))
-
     const work = &self.work_buffers;
     try transpose_into(observation, &work.ht);
     _ = try prior_cov.multiply(&work.ht, &work.pht);

@@ -6,8 +6,6 @@ const Optimization = @import("Optimization");
 const gui = @import("GUI.zig");
 const recording = @import("recording");
 const track = @import("VideoTracker.zig");
-//const KalmanFilter = @import("KalmanFilter/KalmanFilter.zig");
-//const AKAZE = @import("Tracking/AKAZE.zig");
 const frame_op = @import("Tracking/FrameOperations.zig");
 pub const config = @import("Config.zig");
 const mat = @import("KalmanFilter/Matrix.zig");
@@ -30,8 +28,6 @@ const video_format: recording.VideoFormats = .rgb;
 
 const print = std.debug.print;
 
-
-//https://www.youtube.com/watch?v=ZTHp1v5Aja8
 
 const MatchingAlgorithm = enum{
     Camshift,
