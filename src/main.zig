@@ -126,7 +126,10 @@ pub fn main(init: std.process.Init) !void {
 
 
     const video_basename = std.fs.path.basename(file_path.filename);
-    const log_name= try std.fmt.allocPrint(smp,"{s}_BoundingBox.log", .{video_basename});
+    const video_ext = std.fs.path.extension(file_path.filename);
+    const video_name = std.mem.trimEnd(u8, video_basename, video_ext);
+    const log_name= try std.fmt.allocPrint(smp,"{s}_BoundingBox.log", .{video_name});
+
     defer smp.free(log_name);
 
     var log_file = try cwd.createFile(io, log_name, .{});
