@@ -15,8 +15,8 @@ pub const opencv = @cImport({
 // Constants
 const rgb_pixel_len = frame_op.rgb_pixel_len;
 const expansion_step: f32 = 0.1;
-const expansion_default: f32 = 1.7;
-const expansion_min: f32 = 1.3;
+const expansion_default: f32 = 1.5;
+const expansion_min: f32 = 1.2;
 const expansion_max: f32 = 2.5;
 const kcf_confidence_min: f32 = 0.7;
 const akaze_recompute_interval: usize = 10;
