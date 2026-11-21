@@ -21,12 +21,14 @@ const Tracker = track.VideoTracker;
 
 pub const tracking_type: MatchingAlgorithm = .KCF;
 const debug_mode = false;
-const filename: []const u8 = "Motorcycle";
-const file_extension: []const u8 = "mp4";
-const relative_video_path: [:0]const u8 = std.fmt.comptimePrint("tests/{s}.{s}", .{filename, file_extension});
 const video_format: recording.VideoFormats = .rgb;
 
 const print = std.debug.print;
+
+
+const FileJSON = struct{
+    filename: [:0]const u8
+};
 
 
 const MatchingAlgorithm = enum{
@@ -83,13 +85,17 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
     var cwd = std.Io.Dir.cwd();
 
+    var fjson = try parse_filename_json(&cwd, smp, io);
+    defer fjson.deinit();
+
+    const file_path = fjson.value;
 
     var video_memory: VideoMemory = undefined;
 
     if(builtin.os.tag == .macos){
         const abs_path = try cwd.realPathFileAlloc(
             io,
-            std.fmt.comptimePrint("./{s}", .{relative_video_path}),
+            file_path.filename,
             smp
         );
         print("File Path: {s}\n", .{abs_path});
@@ -98,7 +104,7 @@ pub fn main(init: std.process.Init) !void {
         video_memory = try .init(smp, abs_path, video_format);
 
     } else {
-        video_memory = try .init(smp, relative_video_path, video_format);
+        video_memory = try .init(smp, file_path.filename, video_format);
     }
     defer video_memory.deinit();
 
@@ -119,9 +125,11 @@ pub fn main(init: std.process.Init) !void {
     defer rl.closeWindow();
 
 
+    const video_basename = std.fs.path.basename(file_path.filename);
+    const log_name= try std.fmt.allocPrint(smp,"{s}_BoundingBox.log", .{video_basename});
+    defer smp.free(log_name);
 
-
-    var log_file = try cwd.createFile(io, std.fmt.comptimePrint("{s}_BoundingBox.log", .{filename}), .{});
+    var log_file = try cwd.createFile(io, log_name, .{});
     defer log_file.close(io);
 
     var file_buffer: [1024]u8 = .{0} ** 1024;
@@ -227,6 +235,16 @@ pub fn main(init: std.process.Init) !void {
 
     }
 }
+
+
+pub fn parse_filename_json(cwd: *std.Io.Dir, smp: std.mem.Allocator, io: std.Io) !json.Parsed(FileJSON){
+    const path = "Filename.json";
+
+    const contents = try cwd.readFileAlloc(io, path, smp, .unlimited);
+
+    return try json.parseFromSlice(FileJSON, smp, contents, .{});
+}
+
 
 
 //var kf_buffer: [config.num_filters]KalmanFilter = undefined;
