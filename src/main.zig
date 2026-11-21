@@ -124,9 +124,9 @@ pub fn main(init: std.process.Init) !void {
     var log_file = try cwd.createFile(io, std.fmt.comptimePrint("{s}_BoundingBox.log", .{filename}), .{});
     defer log_file.close(io);
 
-    var file_buffer: [512]u8 = .{0} ** 512;
+    var file_buffer: [1024]u8 = .{0} ** 1024;
     var writer = log_file.writerStreaming(io, &file_buffer);
-    var string: [512]u8 = undefined;
+    var string: [1024]u8 = undefined;
 
 
     const background_color = rg.getStyle(.default, .{ .default = .background_color });
@@ -198,7 +198,7 @@ pub fn main(init: std.process.Init) !void {
 
             const line = try std.fmt.bufPrint(
                 &string,
-                "Frame Number {d}: ul: ({d:.2}, {d:.2}), ur: ({d:.2}, {d:.2}), lr: ({d:.2}, {d:.2}), ll: ({d:.2}, {d:.2}), centroid: ({d:.2}, {d:.2}), valid: {}, matcher: {s}, criteria: {s}\n",
+                "Frame Number {d}: ul: ({d:.2}, {d:.2}), ur: ({d:.2}, {d:.2}), lr: ({d:.2}, {d:.2}), ll: ({d:.2}, {d:.2}), centroid: ({d:.2}, {d:.2}), valid: {}, matcher: {s}, criteria: {s}, IMM mu: {any}\n",
                 .{
                     frame_num,
                     tracked_box.ul.x,
@@ -213,7 +213,8 @@ pub fn main(init: std.process.Init) !void {
                     tracked_box.centroid.y,
                     tracked_box.valid,
                     @tagName(name_matcher(@intCast(tracked_box.matcher))),
-                    name_criteria(tracked_box.crit)
+                    name_criteria(tracked_box.crit),
+                    active_tracker.imm.mu.data
                 }
             );
 
