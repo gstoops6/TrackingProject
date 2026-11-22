@@ -242,10 +242,8 @@ pub fn main(init: std.process.Init) !void {
 
 pub fn parse_filename_json(cwd: *std.Io.Dir, smp: std.mem.Allocator, io: std.Io) !json.Parsed(FileJSON){
     const path = "Filename.json";
-
     const contents = try cwd.readFileAlloc(io, path, smp, .unlimited);
-
-    return try json.parseFromSlice(FileJSON, smp, contents, .{});
+    return try json.parseFromSlice(FileJSON, smp, contents, .{.ignore_unknown_fields = true});
 }
 
 

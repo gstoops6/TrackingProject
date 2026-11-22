@@ -65,13 +65,13 @@ def plot_log(log_path, aspects):
             axis.plot(
                 frames,
                 [record["probabilities"][0] for record in records],
-                label=f"CV Model",
+                label=f"CA Model",
             )
 
             axis.plot(
                 frames,
                 [record["probabilities"][1] for record in records],
-                label=f"CA Model",
+                label=f"CV Model",
             )
 
             axis.set_ylabel("IMM model probability")
