@@ -60,6 +60,7 @@ pub const VideoTracker = struct{
     color: Frame(u8),
     region: Frame(u8),
     smp: std.mem.Allocator,
+    arena: std.heap.ArenaAllocator,
     bounding_box: BoundingBox,
     bounding_box_matrix: Matrix,
     ect: ECT = .{.ak = null, .cs = null, .kcf = null},
@@ -98,15 +99,17 @@ pub const VideoTracker = struct{
         initial_estimate.data[0] = @floatCast(bb.centroid.x);
         initial_estimate.data[3] = @floatCast(bb.centroid.y);
 
+        var arena: std.heap.ArenaAllocator = .{.child_allocator = smp, .state = .init};
+
         try create_kalman_filters(
-            smp,
+            arena.allocator(),
             kf_buffer,
             @floatCast(1 / frame_rate),
             &initial_estimate,
             &initial_covariance
         );
 
-        var imm = build_imm(smp, kf_buffer) catch |err| {
+        var imm = build_imm(arena.allocator(), kf_buffer) catch |err| {
             for (kf_buffer) |*filter| filter.deinit();
             return err;
         };
@@ -120,6 +123,7 @@ pub const VideoTracker = struct{
             .color = .init(height, width, color_stride, color),
             .region = .init(height, width, color_stride, region),
             .smp = smp,
+            .arena = arena,
             .bounding_box = bb,
             .bounding_box_matrix = bounding_box_matrix,
             .imm = imm,
@@ -162,6 +166,7 @@ pub const VideoTracker = struct{
         self.bounding_box_matrix.destroy();
         self.color.deinit(self.smp);
         self.region.deinit(self.smp);
+        self.arena.deinit();
         self.* = undefined;
     }
 
@@ -477,8 +482,8 @@ pub const AkazeAsyncUpdate = struct{
         }
     }
 
-    // Pass frame to this sync primitive to manage the lifetime of the clone during the update.
-    // Simplifies lifetime as it will be destroyed after completing update.
+    /// Pass frame to this sync primitive to manage the lifetime of the clone during the update.
+    /// Simplifies lifetime as it will be destroyed after completing update.
     pub fn absorb_clone(self: *AkazeAsyncUpdate, smp: std.mem.Allocator, frame: *Frame(u8)) !void{
         self.frame_copy = try frame.clone(smp);
     }
