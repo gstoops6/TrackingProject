@@ -213,165 +213,49 @@ fn determine_cuda_arch(b: *std.Build) ![]u8 {
     return try std.fmt.allocPrint(b.allocator, "-arch=sm_{d}", .{archs.items[max_mem_idx]});
 }
 
-pub fn link(b: *std.Build) !void {
-
-
-        const alloc = b.allocator;
-        const cuda_path_override = b.option(
-            []const u8,
-            "cuda-path",
-            "CUDA Toolkit root directory; defaults to CUDA_PATH or automatic discovery",
-        );
-        const cuda_arch_override = b.option(
-            []const u8,
-            "cuda-arch",
-            "CUDA architecture such as sm_75 or native; defaults to GPU detection",
-        );
-        const cuda_host_compiler_override = b.option(
-            []const u8,
-            "cuda-host-compiler",
-            "Path to cl.exe used by NVCC; defaults to automatic discovery",
-        );
-
-        const cuda_dir = if (cuda_path_override) |cuda_path|
-            try alloc.dupe(u8, cuda_path)
-        else
-            try find_cuda(b, alloc);
-        const cuda_include = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ cuda_dir, "include" });
-        const arch = if (cuda_arch_override) |cuda_arch|
-            try std.fmt.allocPrint(alloc, "-arch={s}", .{cuda_arch})
-        else
-            try determine_cuda_arch(b);
-
-        defer alloc.free(cuda_dir);
-        defer alloc.free(cuda_include);
-        defer alloc.free(arch);
-
-        const cuda_wrapper_include = b.path("src/Processing");
-        const cuda_wrapper_lib = b.path("deps/CUDA/bin");
-
-        exe.root_module.addIncludePath(cuda_wrapper_include);
-
-        exe.root_module.addCMacro("__NV_NO_VECTOR_DEPRECATION_DIAG", "1");
-        exe.root_module.addSystemIncludePath(.{
-            .cwd_relative = cuda_include,
-        });
-
-        switch (target_os) {
-            .windows => {
-                const lib_path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ cuda_dir, "lib/x64" });
-                const cuda_lib: std.Build.LazyPath = .{ .cwd_relative = lib_path };
-                const cl_path = if (cuda_host_compiler_override) |host_compiler|
-                    try alloc.dupe(u8, host_compiler)
-                else
-                    try find_cl_exe(b, alloc);
-
-                defer alloc.free(lib_path);
-                defer alloc.free(cl_path);
-
-                const cuda_link: std.Build.Module.LinkSystemLibraryOptions = .{
-                    .use_pkg_config = .no,
-                    .preferred_link_mode = .dynamic,
-                    .search_strategy = .mode_first,
-                };
-                const cuda_system_libs = [_][]const u8{
-                    "cudart",
-                    "cufft",
-                    "cublas",
-                    "curand",
-                    "nppist",
-                    "nppc",
-                };
-
-                exe.root_module.addLibraryPath(cuda_lib);
-                for (cuda_system_libs) |lib_name| {
-                    exe.root_module.linkSystemLibrary(lib_name, cuda_link);
-                }
-
-                //const compile_architectures: []const u8 = &.{"-arch=native", "arch"};
-
-                const cuda_sources = [_][]const u8{
-                    "src/Processing/Autocorrelation.cu",
-                    "src/Processing/Mean.cu",
-                    "src/Processing/CorrelationHelpers.cu",
-                    "src/Processing/FluxCorrelation.cu",
-                    "src/Processing/CentralFluxCorrelation.cu",
-                    "src/Processing/SparseCorrelation.cu",
-                    "src/Processing/Histogram.cu",
-                    "src/Processing/XYAverage.cu"
-                };
-                const correlation = try add_cuda_correlation_library(b, cuda_dir, cuda_include, arch, cl_path, &cuda_sources);
-
-                exe.root_module.addCMacro("CORRELATION_USE_DLL", "1");
-                exe.root_module.addObjectFile(correlation.import_library);
-
-                const install_correlation_dll = b.addInstallFileWithDir(
-                    correlation.dynamic_library,
-                    .bin,
-                    "correlation.dll",
-                );
-                b.getInstallStep().dependOn(&install_correlation_dll.step);
-            },
-            .linux => {
-                const lib_path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ cuda_dir, "lib64" });
-                const cuda_lib: std.Build.LazyPath = .{ .cwd_relative = lib_path };
-                defer alloc.free(lib_path);
-
-                const cuda_link: std.Build.Module.LinkSystemLibraryOptions = .{
-                    .use_pkg_config = .no,
-                    .preferred_link_mode = .dynamic,
-                    .search_strategy = .mode_first,
-                };
-                const cuda_system_libs = [_][]const u8{
-                    "cudart",
-                    "cufft",
-                    "cublas",
-                    "curand",
-                };
-
-                exe.root_module.addLibraryPath(cuda_lib);
-                exe.root_module.addLibraryPath(cuda_wrapper_lib);
-                exe.root_module.addRPath(cuda_lib);
-                exe.root_module.addRPath(cuda_wrapper_lib);
-                exe.root_module.linkSystemLibrary("correlation", .{ .preferred_link_mode = .dynamic, .use_pkg_config = .no, .search_strategy = .paths_first });
-
-                for (cuda_system_libs) |lib_name| {
-                    exe.root_module.linkSystemLibrary(lib_name, cuda_link);
-                }
-            },
-            else => std.debug.panic(
-                "CUDA scaffolding is only configured for Windows and Linux targets",
-                .{},
-            ),
-        }
+pub fn link(
+    b: *std.Build,
+    exe: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+) !void {
+    const target_os = target.result.os.tag;
+    const library_subdir = switch (target_os) {
+        .windows => "lib/x64",
+        .linux => "lib64",
+        else => return,
+    };
+    if (target_os != b.graph.host.result.os.tag or
+        target.result.cpu.arch != b.graph.host.result.cpu.arch)
+    {
+        return error.CudaRequiresNativeTarget;
     }
 
-    if (ffmpeg_include_path(b, target_os)) |ffmpeg_include| {
-        exe.root_module.addIncludePath(ffmpeg_include);
-    }
+    const cuda_path_override = b.option(
+        []const u8,
+        "cuda-path",
+        "CUDA Toolkit root directory; defaults to CUDA_PATH or automatic discovery",
+    );
+    const cuda_dir = if (cuda_path_override) |cuda_path|
+        try b.allocator.dupe(u8, b.pathFromRoot(cuda_path))
+    else
+        try find_cuda(b, b.allocator);
+    defer b.allocator.free(cuda_dir);
 
-    //exe.root_module.addIncludePath(b.path("deps/Hamamatsu/dcamsdk4/inc"));
-    //exe.root_module.addLibraryPath(b.path("deps/Hamamatsu/dcamsdk4/lib/win64/dcamapi.lib"));
-    exe.root_module.linkLibrary(recording_lib);
-    exe.root_module.addImport("recording", recording_lib.root_module);
-    exe.root_module.linkLibrary(pco_camera_lib);
-    exe.root_module.addImport("pco_camera", pco_camera_lib.root_module);
+    exe.root_module.addCMacro("__NV_NO_VECTOR_DEPRECATION_DIAG", "1");
+    exe.root_module.addSystemIncludePath(.{
+        .cwd_relative = b.fmt("{s}/include", .{cuda_dir}),
+    });
+    const cuda_lib: std.Build.LazyPath = .{
+        .cwd_relative = b.fmt("{s}/{s}", .{ cuda_dir, library_subdir }),
+    };
+    exe.root_module.addLibraryPath(cuda_lib);
+    if (target_os == .linux) exe.root_module.addRPath(cuda_lib);
 
-    exe.root_module.linkLibrary(raylib_artifact);
-    if (target_os == .windows) {
-        const windows_link: std.Build.Module.LinkSystemLibraryOptions = .{
+    for ([_][]const u8{ "cudart", "cublas", "curand" }) |lib_name| {
+        exe.root_module.linkSystemLibrary(lib_name, .{
             .use_pkg_config = .no,
             .preferred_link_mode = .dynamic,
             .search_strategy = .mode_first,
-        };
-        const windows_system_libs = [_][]const u8{ "user32", "shell32", "gdi32", "winmm", "opengl32", "uuid" };
-
-        for (windows_system_libs) |lib_name| {
-            exe.root_module.linkSystemLibrary(lib_name, windows_link);
-        }
-
-        //exe.root_module.addObjectFile(.{ .cwd_relative = "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/um/x64/Uuid.lib" });
+        });
     }
-
-
 }

@@ -2,6 +2,7 @@ const std = @import("std");
 const openblas = @import("build/openblas.zig");
 const raylib_build = @import("build/raylib.zig");
 const opencv_build = @import("build/opencv.zig");
+const cuda_build = @import("build/cuda.zig");
 const builtin = @import("builtin");
 
 const PathsOpenCV = opencv_build.Paths;
@@ -202,6 +203,7 @@ pub fn build(b: *std.Build) !void {
         b.getInstallStep().dependOn(&install_dlls.step);
     }
 
+    try cuda_build.link(b, exe, target);
     try openblas.link(b, exe, target, clean_dependency_builds);
 
     exe.root_module.addIncludePath(b.path(b.fmt("dependencies/OpenBLAS/{s}/include/openblas", .{target_fmt})));
