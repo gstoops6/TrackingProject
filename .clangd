@@ -1,9 +1,17 @@
 If:
   PathMatch: src/Tracking/.*
-
+  PathMatch: '.*\.(cu|cuh)'
 CompileFlags:
   Compiler: clang++
   Add:
     - -std=c++17
     - -I/Users/gage/Desktop/ElectricalEngineering/GraduateSchool/VideoProcessing/Project/src/Tracking
     - -I/Users/gage/Desktop/ElectricalEngineering/GraduateSchool/VideoProcessing/Project/dependencies/OpenCV/aarch64-macos-none/include/opencv5
+
+  Compiler: clang++
+  Add:
+    - -xcuda
+    - '--cuda-path=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.3'
+    - '-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.3/include'
+    - --no-cuda-version-check
+    - -std=c++20
