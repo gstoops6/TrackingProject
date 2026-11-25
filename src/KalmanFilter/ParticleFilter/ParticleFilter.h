@@ -13,6 +13,8 @@
 #include <stdlib.h>
 
 
+#define THREADS_PER_BLOCK 256
+
 
 
 
@@ -24,13 +26,23 @@ extern "C" {
 typedef struct {
     size_t state_size;
     size_t cov_size;
+    size_t n_particles;
 
+    curandGenerator_t rand_generator;
+    curandState rand_state;
+
+    float *particles;
     float *x_prior;
     float *cov_prior;
     float *x_posterior;
     float *cov_posterior;
 }ParticleFilter;
 
+
+typedef struct{
+    size_t len;
+    void *ptr;
+}Slice;
 
 
 #ifdef __cplusplus
